@@ -1,0 +1,251 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+import random
+
+ATOMS = ["p", "q", "r"]
+
+# -----------------------------
+# Kripke Structure
+# -----------------------------
+class KripkeStructure:
+
+    def __init__(self):
+        self.states = set()
+        self.transitions = {}
+        self.labels = {}
+        self.initial_state = None
+        self.counter = 0
+
+    def new_state(self):
+        s = f"s{self.counter}"
+        self.counter += 1
+
+        self.states.add(s)
+        self.transitions[s] = set()
+
+        # Random truth values for p,q,r
+        props = {a for a in ATOMS if random.choice([True, False])}
+
+        self.labels[s] = {
+            "props": props
+        }
+
+        return s
+
+    def add_transition(self, src, dst):
+        self.transitions[src].add(dst)
+
+
+# -----------------------------
+# Random Kripke generator (connected)
+# -----------------------------
+def generate_random_kripke(num_states=7, max_edges=2):
+    ks = KripkeStructure()
+
+    for _ in range(num_states):
+        ks.new_state()
+
+    ks.initial_state = "s0"
+    states = list(ks.states)
+
+    # Step 1: Ensure every state is reachable from initial_state
+    remaining = states[1:]  # skip s0
+    random.shuffle(remaining)
+    path = [ks.initial_state] + remaining
+    for i in range(len(path) - 1):
+        ks.add_transition(path[i], path[i + 1])
+
+    # Step 2: Add extra random edges
+    for s in states:
+        extra_edges = random.randint(0, max_edges)
+        for _ in range(extra_edges):
+            dst = random.choice(states)
+            ks.add_transition(s, dst)
+
+    # Step 3: Ensure infinite path semantics (self-loop if needed)
+    for s in states:
+        if not ks.transitions[s]:
+            ks.add_transition(s, s)
+
+    return ks
+
+
+# -----------------------------
+# LTL Parser
+# -----------------------------
+def parse_formula(formula):
+
+    formula = formula.strip()
+
+    while formula.startswith("(") and formula.endswith(")"):
+        formula = formula[1:-1].strip()
+
+    depth = 0
+
+    for i, c in enumerate(formula):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "&" and depth == 0:
+            return ("AND",
+                    parse_formula(formula[:i]),
+                    parse_formula(formula[i+1:]))
+
+    for op in ["X", "F", "G"]:
+        if formula.startswith(op + "(") and formula.endswith(")"):
+            return (op, parse_formula(formula[len(op)+1:-1]))
+
+    return ("ATOM", formula)
+
+
+# -----------------------------
+# LTL Evaluation
+# -----------------------------
+def check_ltl(ast, ks, state, visited=None):
+
+    if visited is None:
+        visited = set()
+
+    kind = ast[0]
+
+    if kind == "ATOM":
+        return ast[1] in ks.labels[state]["props"]
+
+    if kind == "AND":
+        return (
+            check_ltl(ast[1], ks, state)
+            and
+            check_ltl(ast[2], ks, state)
+        )
+
+    if kind == "X":
+        for nxt in ks.transitions[state]:
+            return check_ltl(ast[1], ks, nxt)
+        return False
+
+    if kind == "F":   # Eventually
+        if check_ltl(ast[1], ks, state):
+            return True
+
+        for nxt in ks.transitions[state]:
+            if (state, nxt) not in visited:
+                visited.add((state, nxt))
+                if check_ltl(ast, ks, nxt, visited):
+                    return True
+        return False
+
+    if kind == "G":   # Globally
+        if not check_ltl(ast[1], ks, state):
+            return False
+
+        for nxt in ks.transitions[state]:
+            if (state, nxt) not in visited:
+                visited.add((state, nxt))
+                if not check_ltl(ast, ks, nxt, visited):
+                    return False
+        return True
+
+    return False
+
+
+# -----------------------------
+# Evaluate formula on all states
+# -----------------------------
+def evaluate_all_states(ast, ks):
+
+    results = {}
+
+    for s in ks.states:
+        results[s] = check_ltl(ast, ks, s)
+
+    return results
+
+
+# -----------------------------
+# Visualization
+# -----------------------------
+def draw_kripke(ks, results, formula):
+
+    G = nx.DiGraph()
+
+    for s in ks.states:
+
+        props = ",".join(sorted(ks.labels[s]["props"]))
+        label = f"{s}\n[{props}]"
+
+        G.add_node(s, label=label)
+
+    for src in ks.transitions:
+        for dst in ks.transitions[src]:
+            G.add_edge(src, dst)
+
+    pos = nx.spring_layout(G, seed=2)
+
+    colors = []
+
+    for s in G.nodes():
+
+        if s == ks.initial_state:
+            colors.append("#4CAF50")   # initial state
+
+        elif results[s]:
+            colors.append("#64B5F6")   # formula satisfied
+
+        else:
+            colors.append("#E57373")   # formula false
+
+    plt.figure(figsize=(14,9))
+
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        arrows=True,
+        arrowsize=18,
+        edge_color="#444"
+    )
+
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        node_color=colors,
+        node_size=2400,
+        edgecolors="black"
+    )
+
+    labels = nx.get_node_attributes(G, "label")
+
+    nx.draw_networkx_labels(
+        G,
+        pos,
+        labels=labels,
+        font_size=11
+    )
+
+    plt.title(f"LTL Model Checking: {formula}", fontsize=16)
+
+    plt.axis("off")
+    plt.show()
+
+
+# -----------------------------
+# Main
+# -----------------------------
+if __name__ == "__main__":
+
+    formula = "G(p)"
+
+    ast = parse_formula(formula)
+
+    ks = generate_random_kripke(num_states=7)
+
+    results = evaluate_all_states(ast, ks)
+
+    print("State valuations:")
+    for s in sorted(ks.states):
+        print(s, ks.labels[s]["props"])
+
+    print("\nFormula:", formula)
+    print("Initial state satisfies:", results[ks.initial_state])
+
+    draw_kripke(ks, results, formula)
