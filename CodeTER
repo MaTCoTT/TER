@@ -1,165 +1,192 @@
 import networkx as nx
 import matplotlib.pyplot as plt
-import random
-
-ATOMS = ["p", "q", "r"]
 
 # -----------------------------
-# Kripke Structure
+# Kripke Structure (ULTRA SIMPLE)
 # -----------------------------
 class KripkeStructure:
 
     def __init__(self):
-        self.states = set()
-        self.transitions = {}
-        self.labels = {}
+        # graph[s] = {"props": set(...), "next": set(...)}
+        self.graph = {}
         self.initial_state = None
-        self.counter = 0
 
-    def new_state(self):
-        s = f"s{self.counter}"
-        self.counter += 1
-
-        self.states.add(s)
-        self.transitions[s] = set()
-
-        # Random truth values for p,q,r
-        props = {a for a in ATOMS if random.choice([True, False])}
-
-        self.labels[s] = {
-            "props": props
+    def add_state(self, name, props):
+        self.graph[name] = {
+            "props": set(props),
+            "next": set()
         }
 
-        return s
-
     def add_transition(self, src, dst):
-        self.transitions[src].add(dst)
+        if src != dst:  # pas d'autoboucle
+            self.graph[src]["next"].add(dst)
+
+    def is_sink(self, s):
+        return len(self.graph[s]["next"]) == 0
 
 
 # -----------------------------
-# Random Kripke generator (connected)
+# EXAMPLE DAG
 # -----------------------------
-def generate_random_kripke(num_states=7, max_edges=2):
+def build_example_kripke():
     ks = KripkeStructure()
 
-    for _ in range(num_states):
-        ks.new_state()
+    ks.add_state("s0", ["p"])
+    ks.add_state("s1", ["p", "q"])
+    ks.add_state("s2", ["q"])
+    ks.add_state("s3", ["r"])   # sink
+    ks.add_state("s4", [])      # sink
 
     ks.initial_state = "s0"
-    states = list(ks.states)
 
-    # Step 1: Ensure every state is reachable from initial_state
-    remaining = states[1:]  # skip s0
-    random.shuffle(remaining)
-    path = [ks.initial_state] + remaining
-    for i in range(len(path) - 1):
-        ks.add_transition(path[i], path[i + 1])
-
-    # Step 2: Add extra random edges
-    for s in states:
-        extra_edges = random.randint(0, max_edges)
-        for _ in range(extra_edges):
-            dst = random.choice(states)
-            ks.add_transition(s, dst)
-
-    # Step 3: Ensure infinite path semantics (self-loop if needed)
-    for s in states:
-        if not ks.transitions[s]:
-            ks.add_transition(s, s)
+    ks.add_transition("s0", "s1")
+    ks.add_transition("s0", "s2")
+    ks.add_transition("s1", "s3")
+    ks.add_transition("s2", "s4")
+    ks.add_transition("s3", "s3")  # boucle sur le sink
+    ks.add_transition("s4", "s4")  # boucle sur le sink
 
     return ks
 
 
 # -----------------------------
-# LTL Parser
+# CTL PARSER
 # -----------------------------
-def parse_formula(formula):
+def parse_ctl(formula):
 
     formula = formula.strip()
 
-    while formula.startswith("(") and formula.endswith(")"):
-        formula = formula[1:-1].strip()
+    # EX
+    if formula.startswith("EX("):
+        return ("EX", parse_ctl(formula[3:-1]))
 
-    depth = 0
+    # EF
+    if formula.startswith("EF("):
+        return ("EF", parse_ctl(formula[3:-1]))
 
-    for i, c in enumerate(formula):
-        if c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-        elif c == "&" and depth == 0:
-            return ("AND",
-                    parse_formula(formula[:i]),
-                    parse_formula(formula[i+1:]))
+    # EG
+    if formula.startswith("EG("):
+        return ("EG", parse_ctl(formula[3:-1]))
 
-    for op in ["X", "F", "G"]:
-        if formula.startswith(op + "(") and formula.endswith(")"):
-            return (op, parse_formula(formula[len(op)+1:-1]))
+    # AX
+    if formula.startswith("AX("):
+        return ("AX", parse_ctl(formula[3:-1]))
 
+    # EU : E(p U q)
+    if formula.startswith("E(") and "U" in formula:
+        inside = formula[2:-1]
+        left, right = inside.split("U", 1)
+        return ("EU", parse_ctl(left.strip()), parse_ctl(right.strip()))
+
+    # AND
+    if "&" in formula:
+        left, right = formula.split("&", 1)
+        return ("AND", parse_ctl(left), parse_ctl(right))
+
+    # ATOM
     return ("ATOM", formula)
 
 
 # -----------------------------
-# LTL Evaluation
+# CTL MODEL CHECKING
 # -----------------------------
-def check_ltl(ast, ks, state, visited=None):
+def check_ctl(ast, ks, state, visited=None):
 
     if visited is None:
         visited = set()
 
     kind = ast[0]
 
+    # -------------------------
+    # ATOM
     if kind == "ATOM":
-        return ast[1] in ks.labels[state]["props"]
+        return ast[1] in ks.graph[state]["props"]
 
+    # -------------------------
+    # AND
     if kind == "AND":
         return (
-            check_ltl(ast[1], ks, state)
+            check_ctl(ast[1], ks, state)
             and
-            check_ltl(ast[2], ks, state)
+            check_ctl(ast[2], ks, state)
         )
 
-    if kind == "X":
-        for nxt in ks.transitions[state]:
-            return check_ltl(ast[1], ks, nxt)
-        return False
+    # -------------------------
+    # EX
+    if kind == "EX":
+        return any(
+            check_ctl(ast[1], ks, nxt)
+            for nxt in ks.graph[state]["next"]
+        )
 
-    if kind == "F":   # Eventually
-        if check_ltl(ast[1], ks, state):
+    # -------------------------
+    # AX
+    if kind == "AX":
+        if ks.is_sink(state):
+            return False
+        return all(
+            check_ctl(ast[1], ks, nxt)
+            for nxt in ks.graph[state]["next"]
+        )
+
+    # -------------------------
+    # EF
+    if kind == "EF":
+        if check_ctl(ast[1], ks, state):
             return True
 
-        for nxt in ks.transitions[state]:
+        for nxt in ks.graph[state]["next"]:
             if (state, nxt) not in visited:
                 visited.add((state, nxt))
-                if check_ltl(ast, ks, nxt, visited):
+                if check_ctl(ast, ks, nxt, visited):
                     return True
+
         return False
 
-    if kind == "G":   # Globally
-        if not check_ltl(ast[1], ks, state):
+    # -------------------------
+    # EG
+    if kind == "EG":
+        if not check_ctl(ast[1], ks, state):
             return False
 
-        for nxt in ks.transitions[state]:
+        for nxt in ks.graph[state]["next"]:
             if (state, nxt) not in visited:
                 visited.add((state, nxt))
-                if not check_ltl(ast, ks, nxt, visited):
-                    return False
-        return True
+                if check_ctl(ast, ks, nxt, visited):
+                    return True
+
+        return ks.is_sink(state)
+
+    # -------------------------
+    # EU : Exists Until
+    if kind == "EU":
+        phi, psi = ast[1], ast[2]
+
+        # si ψ est vrai → OK
+        if check_ctl(psi, ks, state):
+            return True
+
+        # sinon φ doit être vrai
+        if not check_ctl(phi, ks, state):
+            return False
+
+        # continuer le chemin
+        for nxt in ks.graph[state]["next"]:
+            if (state, nxt) not in visited:
+                visited.add((state, nxt))
+                if check_ctl(ast, ks, nxt, visited):
+                    return True
+
+        return False
 
     return False
 
 
 # -----------------------------
-# Evaluate formula on all states
+# Evaluate all states
 # -----------------------------
 def evaluate_all_states(ast, ks):
-
-    results = {}
-
-    for s in ks.states:
-        results[s] = check_ltl(ast, ks, s)
-
-    return results
+    return {s: check_ctl(ast, ks, s) for s in ks.graph}
 
 
 # -----------------------------
@@ -169,81 +196,61 @@ def draw_kripke(ks, results, formula):
 
     G = nx.DiGraph()
 
-    for s in ks.states:
-
-        props = ",".join(sorted(ks.labels[s]["props"]))
+    for s in ks.graph:
+        props = ",".join(sorted(ks.graph[s]["props"]))
         label = f"{s}\n[{props}]"
+
+        if ks.is_sink(s):
+            label += "\n(SINK)"
 
         G.add_node(s, label=label)
 
-    for src in ks.transitions:
-        for dst in ks.transitions[src]:
+    for src in ks.graph:
+        for dst in ks.graph[src]["next"]:
             G.add_edge(src, dst)
 
     pos = nx.spring_layout(G, seed=2)
 
     colors = []
-
     for s in G.nodes():
-
         if s == ks.initial_state:
-            colors.append("#4CAF50")   # initial state
-
+            colors.append("#4CAF50")
         elif results[s]:
-            colors.append("#64B5F6")   # formula satisfied
-
+            colors.append("#64B5F6")
         else:
-            colors.append("#E57373")   # formula false
+            colors.append("#E57373")
 
-    plt.figure(figsize=(14,9))
+    plt.figure(figsize=(12, 8))
 
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        arrows=True,
-        arrowsize=18,
-        edge_color="#444"
-    )
-
-    nx.draw_networkx_nodes(
-        G,
-        pos,
-        node_color=colors,
-        node_size=2400,
-        edgecolors="black"
-    )
+    nx.draw(G, pos,
+            with_labels=False,
+            node_color=colors,
+            node_size=2200,
+            arrows=True)
 
     labels = nx.get_node_attributes(G, "label")
+    nx.draw_networkx_labels(G, pos, labels)
 
-    nx.draw_networkx_labels(
-        G,
-        pos,
-        labels=labels,
-        font_size=11
-    )
-
-    plt.title(f"LTL Model Checking: {formula}", fontsize=16)
-
+    plt.title(f"CTL Model Checking: {formula}")
     plt.axis("off")
     plt.show()
 
 
 # -----------------------------
-# Main
+# MAIN
 # -----------------------------
 if __name__ == "__main__":
 
-    formula = "G(p)"
+    formula = "E(p U q)"
 
-    ast = parse_formula(formula)
-
-    ks = generate_random_kripke(num_states=7)
+    ks = build_example_kripke()
+    ast = parse_ctl(formula)
 
     results = evaluate_all_states(ast, ks)
 
-    print("State valuations:")
-    for s in sorted(ks.states):
-        print(s, ks.labels[s]["props"])
+    print("States:")
+    for s in ks.graph:
+        print(s, ks.graph[s]["props"], "sink" if ks.is_sink(s) else "")
 
     print("\nFormula:", formula)
     print("Initial state satisfies:", results[ks.initial_state])
