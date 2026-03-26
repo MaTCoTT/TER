@@ -22,7 +22,8 @@ class KripkeStructure:
             self.graph[src]["next"].add(dst)
 
     def is_sink(self, s):
-        return len(self.graph[s]["next"]) == 0
+    next_states = self.graph[s]["next"]
+    return len(next_states) == 0 or next_states == {s}
 
 
 # -----------------------------
