@@ -1,259 +1,161 @@
-import networkx as nx
-import matplotlib.pyplot as plt
+# -----------------------------
+# KRIPKE STRUCTURE
+# -----------------------------
+def Kripke(S, R, L, s0):
+    return {"S": set(S), "R": set(R), "L": dict(L), "s0": s0}
 
 # -----------------------------
-# Kripke Structure (ULTRA SIMPLE)
+# CTL FORMULAS (AST)
 # -----------------------------
-class KripkeStructure:
-
-    def __init__(self):
-        # graph[s] = {"props": set(...), "next": set(...)}
-        self.graph = {}
-        self.initial_state = None
-
-    def add_state(self, name, props):
-        self.graph[name] = {
-            "props": set(props),
-            "next": set()
-        }
-
-    def add_transition(self, src, dst):
-        if src != dst:  # pas d'autoboucle
-            self.graph[src]["next"].add(dst)
-
-    def is_sink(self, s):
-    next_states = self.graph[s]["next"]
-    return len(next_states) == 0 or next_states == {s}
-
+def Atom(p): return ("atom", p)
+def Not(f): return ("not", f)
+def And(f, g): return ("and", f, g)
+def EX(f): return ("EX", f)
+def AX(f): return ("AX", f)
+def EF(f): return ("EF", f)
+def AF(f): return ("AF", f)
+def EG(f): return ("EG", f)
+def AG(f): return ("AG", f)
 
 # -----------------------------
-# EXAMPLE DAG
+# GRAPH
 # -----------------------------
-def build_example_kripke():
-    ks = KripkeStructure()
-
-    ks.add_state("s0", ["p"])
-    ks.add_state("s1", ["p", "q"])
-    ks.add_state("s2", ["q"])
-    ks.add_state("s3", ["r"])   # sink
-    ks.add_state("s4", [])      # sink
-
-    ks.initial_state = "s0"
-
-    ks.add_transition("s0", "s1")
-    ks.add_transition("s0", "s2")
-    ks.add_transition("s1", "s3")
-    ks.add_transition("s2", "s4")
-    ks.add_transition("s3", "s3")  # boucle sur le sink
-    ks.add_transition("s4", "s4")  # boucle sur le sink
-
-    return ks
-
+def post(M, s):
+    return {t for (x, t) in M["R"] if x == s}
 
 # -----------------------------
-# CTL PARSER
+# ON-THE-FLY CTL CHECKING
 # -----------------------------
-def parse_ctl(formula):
-
-    formula = formula.strip()
-
-    # EX
-    if formula.startswith("EX("):
-        return ("EX", parse_ctl(formula[3:-1]))
-
-    # EF
-    if formula.startswith("EF("):
-        return ("EF", parse_ctl(formula[3:-1]))
-
-    # EG
-    if formula.startswith("EG("):
-        return ("EG", parse_ctl(formula[3:-1]))
-
-    # AX
-    if formula.startswith("AX("):
-        return ("AX", parse_ctl(formula[3:-1]))
-
-    # EU : E(p U q)
-    if formula.startswith("E(") and "U" in formula:
-        inside = formula[2:-1]
-        left, right = inside.split("U", 1)
-        return ("EU", parse_ctl(left.strip()), parse_ctl(right.strip()))
-
-    # AND
-    if "&" in formula:
-        left, right = formula.split("&", 1)
-        return ("AND", parse_ctl(left), parse_ctl(right))
-
-    # ATOM
-    return ("ATOM", formula)
-
-
-# -----------------------------
-# CTL MODEL CHECKING
-# -----------------------------
-def check_ctl(ast, ks, state, visited=None):
-
+def Sat_on_the_fly(M, f, s, visited=None):
+    """
+    Évalue la formule CTL f depuis l'état s (on-the-fly).
+    Retourne True / False.
+    """
     if visited is None:
         visited = set()
 
-    kind = ast[0]
+    kind = f[0]
 
-    # -------------------------
+    # TRUE
+    if kind == "true":
+        return True
+
     # ATOM
-    if kind == "ATOM":
-        return ast[1] in ks.graph[state]["props"]
+    if kind == "atom":
+        return f[1] in M["L"][s]
 
-    # -------------------------
+    # NOT
+    if kind == "not":
+        return not Sat_on_the_fly(M, f[1], s, visited)
+
     # AND
-    if kind == "AND":
+    if kind == "and":
         return (
-            check_ctl(ast[1], ks, state)
-            and
-            check_ctl(ast[2], ks, state)
+            Sat_on_the_fly(M, f[1], s, visited)
+            and Sat_on_the_fly(M, f[2], s, visited)
         )
 
-    # -------------------------
     # EX
     if kind == "EX":
-        return any(
-            check_ctl(ast[1], ks, nxt)
-            for nxt in ks.graph[state]["next"]
-        )
+        return any(Sat_on_the_fly(M, f[1], t, set()) for t in post(M, s))
 
-    # -------------------------
     # AX
     if kind == "AX":
-        if ks.is_sink(state):
-            return False
-        return all(
-            check_ctl(ast[1], ks, nxt)
-            for nxt in ks.graph[state]["next"]
-        )
+        succs = post(M, s)
+        return succs and all(Sat_on_the_fly(M, f[1], t, set()) for t in succs)
 
-    # -------------------------
-    # EF
+    # EF (exists eventually)
     if kind == "EF":
-        if check_ctl(ast[1], ks, state):
+        if Sat_on_the_fly(M, f[1], s, set()):
             return True
+        if s in visited:
+            return False
+        visited.add(s)
+        return any(Sat_on_the_fly(M, f, t, visited.copy()) for t in post(M, s))
 
-        for nxt in ks.graph[state]["next"]:
-            if (state, nxt) not in visited:
-                visited.add((state, nxt))
-                if check_ctl(ast, ks, nxt, visited):
-                    return True
+    # AF (for all eventually)
+    if kind == "AF":
+        if Sat_on_the_fly(M, f[1], s, set()):
+            return True
+        if s in visited:
+            return False
+        visited.add(s)
+        succs = post(M, s)
+        return succs and all(Sat_on_the_fly(M, f, t, visited.copy()) for t in succs)
 
-        return False
-
-    # -------------------------
-    # EG
+    # EG (exists globally)
     if kind == "EG":
-        if not check_ctl(ast[1], ks, state):
+        if not Sat_on_the_fly(M, f[1], s, set()):
             return False
-
-        for nxt in ks.graph[state]["next"]:
-            if (state, nxt) not in visited:
-                visited.add((state, nxt))
-                if check_ctl(ast, ks, nxt, visited):
-                    return True
-
-        return ks.is_sink(state)
-
-    # -------------------------
-    # EU : Exists Until
-    if kind == "EU":
-        phi, psi = ast[1], ast[2]
-
-        # si ψ est vrai → OK
-        if check_ctl(psi, ks, state):
+        if s in visited:
             return True
+        visited.add(s)
+        return any(Sat_on_the_fly(M, f, t, visited.copy()) for t in post(M, s))
 
-        # sinon φ doit être vrai
-        if not check_ctl(phi, ks, state):
+    # AG (for all globally)
+    if kind == "AG":
+        if not Sat_on_the_fly(M, f[1], s, set()):
             return False
+        if s in visited:
+            return True
+        visited.add(s)
+        succs = post(M, s)
+        return succs and all(Sat_on_the_fly(M, f, t, visited.copy()) for t in succs)
 
-        # continuer le chemin
-        for nxt in ks.graph[state]["next"]:
-            if (state, nxt) not in visited:
-                visited.add((state, nxt))
-                if check_ctl(ast, ks, nxt, visited):
-                    return True
-
-        return False
-
-    return False
+    raise ValueError("Unknown formula: " + str(f))
 
 
 # -----------------------------
-# Evaluate all states
+# HELPER: PRINT FORMULA
 # -----------------------------
-def evaluate_all_states(ast, ks):
-    return {s: check_ctl(ast, ks, s) for s in ks.graph}
-
-
-# -----------------------------
-# Visualization
-# -----------------------------
-def draw_kripke(ks, results, formula):
-
-    G = nx.DiGraph()
-
-    for s in ks.graph:
-        props = ",".join(sorted(ks.graph[s]["props"]))
-        label = f"{s}\n[{props}]"
-
-        if ks.is_sink(s):
-            label += "\n(SINK)"
-
-        G.add_node(s, label=label)
-
-    for src in ks.graph:
-        for dst in ks.graph[src]["next"]:
-            G.add_edge(src, dst)
-
-    pos = nx.spring_layout(G, seed=2)
-
-    colors = []
-    for s in G.nodes():
-        if s == ks.initial_state:
-            colors.append("#4CAF50")
-        elif results[s]:
-            colors.append("#64B5F6")
-        else:
-            colors.append("#E57373")
-
-    plt.figure(figsize=(12, 8))
-
-    nx.draw(G, pos,
-            with_labels=False,
-            node_color=colors,
-            node_size=2200,
-            arrows=True)
-
-    labels = nx.get_node_attributes(G, "label")
-    nx.draw_networkx_labels(G, pos, labels)
-
-    plt.title(f"CTL Model Checking: {formula}")
-    plt.axis("off")
-    plt.show()
+def formula_to_str(f):
+    kind = f[0]
+    if kind == "atom": return f[1]
+    if kind == "not": return f"¬({formula_to_str(f[1])})"
+    if kind == "and": return f"({formula_to_str(f[1])} ∧ {formula_to_str(f[2])})"
+    if kind in ("EX","AX","EF","AF","EG","AG"):
+        return f"{kind}({formula_to_str(f[1])})"
+    return str(f)
 
 
 # -----------------------------
-# MAIN
+# MODEL
 # -----------------------------
-if __name__ == "__main__":
+M = Kripke(
+    S={"s0","s1","s2","s3","s4"},
+    R={
+        ("s0","s1"),
+        ("s0","s2"),
+        ("s1","s3"),
+        ("s2","s4"),
+        ("s3","s3"),
+        ("s4","s4")
+    },
+    L={
+        "s0":{"p"},
+        "s1":{"p","q"},
+        "s2":{"q"},
+        "s3":{"r"},
+        "s4":{""}
+    },
+    s0="s0"
+)
 
-    formula = "E(p U q)"
+# -----------------------------
+# CHANGE ONLY THIS LINE
+# -----------------------------
+formula = EF(Atom("r"))
 
-    ks = build_example_kripke()
-    ast = parse_ctl(formula)
+# -----------------------------
+# EVALUATION
+# -----------------------------
+print(f"\n=== Testing {formula_to_str(formula)} ===")
 
-    results = evaluate_all_states(ast, ks)
+# résultat global (depuis état initial)
+result = Sat_on_the_fly(M, formula, M["s0"])
+print(f"Résultat depuis l'état initial: {'✓ Vrai' if result else '✗ Faux'}")
 
-    print("States:")
-    for s in ks.graph:
-        print(s, ks.graph[s]["props"], "sink" if ks.is_sink(s) else "")
-
-    print("\nFormula:", formula)
-    print("Initial state satisfies:", results[ks.initial_state])
-
-    draw_kripke(ks, results, formula)
+# debug par état
+for s in M["S"]:
+    res = Sat_on_the_fly(M, formula, s)
+    print(f"État {s}: {'✓ satisfait' if res else '✗ ne satisfait pas'}")
