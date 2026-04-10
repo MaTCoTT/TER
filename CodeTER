@@ -1,112 +1,115 @@
 # -----------------------------
-# KRIPKE STRUCTURE
+# KRIPKE STRUCTURE = PURE DATA
 # -----------------------------
 def Kripke(S, R, L, s0):
     return {"S": set(S), "R": set(R), "L": dict(L), "s0": s0}
 
 # -----------------------------
-# CTL FORMULAS (AST)
+# CTL FORMULAS = DATA (AST)
 # -----------------------------
 def Atom(p): return ("atom", p)
 def Not(f): return ("not", f)
 def And(f, g): return ("and", f, g)
 def EX(f): return ("EX", f)
 def AX(f): return ("AX", f)
+def EU(f, g): return ("EU", f, g)
+def AU(f, g): return ("AU", f, g)
 def EF(f): return ("EF", f)
 def AF(f): return ("AF", f)
 def EG(f): return ("EG", f)
 def AG(f): return ("AG", f)
+def TRUE(): return ("true",)
 
 # -----------------------------
-# GRAPH
+# GRAPH OPERATORS
 # -----------------------------
 def post(M, s):
     return {t for (x, t) in M["R"] if x == s}
 
-# -----------------------------
-# ON-THE-FLY CTL CHECKING
-# -----------------------------
-def Sat_on_the_fly(M, f, s, visited=None):
-    """
-    Évalue la formule CTL f depuis l'état s (on-the-fly).
-    Retourne True / False.
-    """
-    if visited is None:
-        visited = set()
+def pre_exists(M, X):
+    return {s for s in M["S"] if any(t in X for t in post(M, s))}
 
+def pre_all(M, X):
+    return {s for s in M["S"] if post(M, s) and all(t in X for t in post(M, s))}
+
+# -----------------------------
+# CTL SEMANTICS (FIXPOINT)
+# -----------------------------
+def Sat(M, f):
     kind = f[0]
 
-    # TRUE
     if kind == "true":
-        return True
+        return set(M["S"])
 
-    # ATOM
     if kind == "atom":
-        return f[1] in M["L"][s]
+        return {s for s in M["S"] if f[1] in M["L"][s]}
 
-    # NOT
     if kind == "not":
-        return not Sat_on_the_fly(M, f[1], s, visited)
+        return M["S"] - Sat(M, f[1])
 
-    # AND
     if kind == "and":
-        return (
-            Sat_on_the_fly(M, f[1], s, visited)
-            and Sat_on_the_fly(M, f[2], s, visited)
-        )
+        return Sat(M, f[1]) & Sat(M, f[2])
 
-    # EX
     if kind == "EX":
-        return any(Sat_on_the_fly(M, f[1], t, set()) for t in post(M, s))
+        return pre_exists(M, Sat(M, f[1]))
 
-    # AX
     if kind == "AX":
-        succs = post(M, s)
-        return succs and all(Sat_on_the_fly(M, f[1], t, set()) for t in succs)
+        return pre_all(M, Sat(M, f[1]))
 
-    # EF (exists eventually)
+    if kind == "EU":
+        phi, psi = f[1], f[2]
+        X = set()
+        Y = Sat(M, psi)
+        while X != Y:
+            X = Y.copy()
+            Y = Y | {s for s in Sat(M, phi) if any(t in Y for t in post(M, s))}
+        return Y
+
+    if kind == "AU":
+        phi, psi = f[1], f[2]
+        X = set()
+        Y = Sat(M, psi)
+        while X != Y:
+            X = Y.copy()
+            Y = Y | {s for s in Sat(M, phi) if post(M, s) and all(t in Y for t in post(M, s))}
+        return Y
+
     if kind == "EF":
-        if Sat_on_the_fly(M, f[1], s, set()):
-            return True
-        if s in visited:
-            return False
-        visited.add(s)
-        return any(Sat_on_the_fly(M, f, t, visited.copy()) for t in post(M, s))
+        return Sat(M, EU(TRUE(), f[1]))
 
-    # AF (for all eventually)
     if kind == "AF":
-        if Sat_on_the_fly(M, f[1], s, set()):
-            return True
-        if s in visited:
-            return False
-        visited.add(s)
-        succs = post(M, s)
-        return succs and all(Sat_on_the_fly(M, f, t, visited.copy()) for t in succs)
+        X = set()
+        Y = Sat(M, f[1])
+        while X != Y:
+            X = Y.copy()
+            Y = Y | {s for s in M["S"] if all(t in Y for t in post(M, s))}
+        return Y
 
-    # EG (exists globally)
     if kind == "EG":
-        if not Sat_on_the_fly(M, f[1], s, set()):
-            return False
-        if s in visited:
-            return True
-        visited.add(s)
-        return any(Sat_on_the_fly(M, f, t, visited.copy()) for t in post(M, s))
+        X = set(M["S"])
+        Y = Sat(M, f[1])
+        while X != Y:
+            X = Y.copy()
+            Y = {s for s in Y if post(M, s) and any(t in Y for t in post(M, s))}
+        return Y
 
-    # AG (for all globally)
     if kind == "AG":
-        if not Sat_on_the_fly(M, f[1], s, set()):
-            return False
-        if s in visited:
-            return True
-        visited.add(s)
-        succs = post(M, s)
-        return succs and all(Sat_on_the_fly(M, f, t, visited.copy()) for t in succs)
+        return M["S"] - Sat(M, EF(Not(f[1])))
 
     raise ValueError("Unknown formula: " + str(f))
 
+# -----------------------------
+# CHECKING
+# -----------------------------
+def check_from_initial(M, formula):
+    return M["s0"] in Sat(M, formula)
+
+def check_per_state(M, formula):
+    sat_states = Sat(M, formula)
+    return {s: (s in sat_states) for s in M["S"]}
 
 # -----------------------------
-# HELPER: PRINT FORMULA
+# FORMULA STRING (AUTO DISPLAY)
 # -----------------------------
 def formula_to_str(f):
     kind = f[0]
@@ -115,8 +118,11 @@ def formula_to_str(f):
     if kind == "and": return f"({formula_to_str(f[1])} ∧ {formula_to_str(f[2])})"
     if kind in ("EX","AX","EF","AF","EG","AG"):
         return f"{kind}({formula_to_str(f[1])})"
+    if kind in ("EU","AU"):
+        return f"{kind}({formula_to_str(f[1])}, {formula_to_str(f[2])})"
+    if kind == "true":
+        return "⊤"
     return str(f)
-
 
 # -----------------------------
 # MODEL
@@ -142,20 +148,20 @@ M = Kripke(
 )
 
 # -----------------------------
-# CHANGE ONLY THIS LINE
+# CHANGE ONLY THIS
 # -----------------------------
 formula = EF(Atom("r"))
 
 # -----------------------------
-# EVALUATION
+# EXECUTION
 # -----------------------------
-print(f"\n=== Testing {formula_to_str(formula)} ===")
+formula_str = formula_to_str(formula)
 
-# résultat global (depuis état initial)
-result = Sat_on_the_fly(M, formula, M["s0"])
-print(f"Résultat depuis l'état initial: {'✓ Vrai' if result else '✗ Faux'}")
+print(f"\n=== Testing {formula_str} ===")
 
-# debug par état
-for s in M["S"]:
-    res = Sat_on_the_fly(M, formula, s)
-    print(f"État {s}: {'✓ satisfait' if res else '✗ ne satisfait pas'}")
+result = check_from_initial(M, formula)
+print(f"Résultat final depuis l'état initial: {'✓ Vrai' if result else '✗ Faux'}")
+
+per_state = check_per_state(M, formula)
+for s, sat in per_state.items():
+    print(f"État {s}: {'✓ satisfait' if sat else '✗ ne satisfait pas'}")
