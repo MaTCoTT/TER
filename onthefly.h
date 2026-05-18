@@ -1,8 +1,7 @@
-#ifndef ONTHEFLY
-#define ONTHEFLY
+#ifndef ONTHEFLY_H
+#define ONTHEFLY_H
 
 #define AP_SIZE 2
-
 
 typedef struct graph_state{
 	int n,len_out,len_in;
@@ -29,9 +28,18 @@ typedef struct ctl_props{
 
 int a_in_ap(char *l, char a);
 CTL *encode_props(char * props, int len);
-char check_EF(State *q,CTL *ctl);
+char check(State *q,CTL *ctl);
 char model_checking(DAG *g, char *props, int len_props);
 void free_State(DAG *dag);
 void free_DAG(DAG *dag);
 
+#define MAX_STATES 1024
+extern State* all_states[MAX_STATES];
+ 
+State* charger_etat(int target_id, const char* filename);
+ 
+int check_EF(int current_id, char target_ap, const char* filename);
+int check_EX(int current_id, char target_ap, const char* filename);
+int check_EG(int current_id, char target_ap, const char* filename);
+int check_nested_EF_EF(int current_id, char p, char q, const char* filename);
 #endif

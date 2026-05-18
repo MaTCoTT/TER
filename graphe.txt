@@ -1,0 +1,11 @@
+state q0 (p)
+transition q0 -> q1
+transition q0 -> q2
+state q1 (empty)
+transition q1 -> q3
+state q2 (q)
+transition q2 -> q4
+state q3 (empty)
+transition q3 -> q3
+state q4 (q)
+transition q4 -> q4

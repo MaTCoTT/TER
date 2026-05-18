@@ -3,6 +3,7 @@
 #include <string.h>
 #include "onthefly.h"
 
+
 int a_in_ap(char *l, char a){
 	for(int i=0;i<AP_SIZE;i++){
 		if(l[i]==a){
@@ -12,7 +13,7 @@ int a_in_ap(char *l, char a){
 	return 0;
 }
 
-CTL *encode_props(char *props, int len){ //pas d'imbrications pour le moment
+CTL *encode_prop(char *props, int len){ //pas d'imbrications pour le moment
 	CTL *ctl=malloc(sizeof(CTL)),*curr_ctl=ctl;
 	int i=0;
 	while(i<len){//EF:4,EG=5,EX=6,&:7,|:8,T=9,F=10,AP=11
@@ -45,10 +46,10 @@ CTL *encode_props(char *props, int len){ //pas d'imbrications pour le moment
 			if(props[i]=='('){
 				closed_brackets++;
 			}
-			else if(props[i]==')'){
+			if(props[i]==')'){
 				closed_brackets--;
 			}
-			else if(closed_brackets==1){
+			if(closed_brackets==1){
 				if(props[i]=='&'){
 					curr_ctl->op_p=7;
 				}
@@ -59,10 +60,8 @@ CTL *encode_props(char *props, int len){ //pas d'imbrications pour le moment
 					curr_ctl->op_p=12;
 				}*/
 			}
-			//if()  // EF(p & EF(p &...))
 		}
 	}
-	
 	/*
 	if(len)
 	else if(props[0]=='A'){
@@ -100,60 +99,11 @@ CTL *encode_props(char *props, int len){ //pas d'imbrications pour le moment
 		}
 	}
 	*/
-	return ctl;
 }
-
-char check_EF(State *q,  CTL *ctl){
-	/*
-	if(ctl->op==11){
-		return a_in_ap(q->ap,ctl->ap);
-	}
-	if(ctl->op==1){//AF<-
-		for(int i=0;q->len_out;i++){
-			if(!(q->leaf) || !(a_in_ap(q->ap,ctl->p->ap))){
-				return 0;
-			}
-			check(q->out[i],ctl);
-		}
-	}
-	if(ctl->op==2){//AG<-
-		for(int i=0;q->len_out;i++){
-			if(!(q->leaf) || !(a_in_ap(q->ap,ctl->p->ap))){
-				return 0;
-			}
-			check(q->out[i],ctl);
-			//ag_eg();
-		}
-	}
-	if(ctl->op==3){//AX
-		for(int i=0;q->len_out;i++){
-			if(!(a_in_ap(q->out[i],ctl->p->ap))){
-				return 0;
-			}
-		}
-	}
-	
-	if(ctl->op==4){//EF<-
-		for(int i=0;q->len_out;i++){
-			if(q->leaf && a_in_ap(q->ap,ctl->p->ap))
-			check(q->out[i],ctl);
-		}
-	}
-	if(ctl->op==6){//EX<- 	
-		for(int i=0;q->len_out;i++){
-			if(a_in_ap(q->out[i],ctl->p->ap)){
-				return 1;
-			}
-		}
-	}
-	*/
-	return 0;
-}
-
 
 char model_checking(DAG *g, char * props, int len_props){
-	CTL *ctl=encode_props(props,len_props);
-	check_EF(g->q_0,ctl);
+	CTL *ctl=encode_prop(props,len_props);
+	//check_EF(g->q_0,props);
 	//for(int i=0;i<g->)
 	return 0;
 }
@@ -174,3 +124,157 @@ void free_DAG(DAG *dag){
 	return;
 }
 
+char ag_eg(){
+	
+}
+
+
+
+State* all_states[MAX_STATES] = {NULL};
+
+State* charger_etat(int target_id, const char* filename) {
+    if (all_states[target_id] != NULL) {
+        return all_states[target_id];
+    }
+
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        printf("Erreur : Impossible d'ouvrir %s\n", filename);
+        return NULL;
+    }
+
+    State* current = NULL;
+    char line[256];
+    int reading = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        int state_id;
+        char ap_buf[64] = {0};
+
+        // Détection de "state qX (AP)" ou "state qX (empty)"
+        if (sscanf(line, "state q%d (%63[^)])", &state_id, ap_buf) >= 1) {
+            if (state_id == target_id) {
+                reading = 1;
+                current = calloc(1, sizeof(State));
+                current->n = target_id;
+
+                // Lire l'AP depuis la ligne state
+                if (strcmp(ap_buf, "empty") != 0 && strlen(ap_buf) > 0) {
+                    int ap_idx = 0;
+                    for (int i = 0; ap_buf[i] != '\0' && ap_idx < AP_SIZE; i++) {
+                        if (ap_buf[i] != ' ' && ap_buf[i] != ',') {
+                            current->ap[ap_idx++] = ap_buf[i];
+                        }
+                    }
+                    if (ap_idx < AP_SIZE) current->ap[ap_idx] = '\0';
+                } else {
+                    current->ap[0] = '\0';
+                }
+                continue;
+            } else if (reading) {
+                break;
+            }
+        }
+
+        // Transitions simples : "transition qX -> qY"
+        if (reading && strncmp(line, "transition", 10) == 0) {
+            int src, dest;
+
+            if (sscanf(line, "transition q%d -> q%d", &src, &dest) == 2) {
+                if (src == dest) {
+                    current->leaf = 1;
+                } else {
+                    current->len_out++;
+                    current->out = realloc(current->out, current->len_out * sizeof(State*));
+                    State* ref = calloc(1, sizeof(State));
+                    ref->n = dest;
+                    current->out[current->len_out - 1] = ref;
+                }
+            }
+        }
+    }
+
+    fclose(file);
+
+    if (current != NULL) {
+        all_states[target_id] = current;
+        printf("[PARSEUR] Etat q%d charge (AP: '%s', %d successeurs%s)\n",
+               target_id, current->ap, current->len_out,
+               current->leaf ? ", FEUILLE" : "");
+    }
+
+    return current;
+}
+
+int check_EX(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        State* next = charger_etat(next_id, filename);
+        if (next != NULL && a_in_ap(next->ap, target_ap)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int check_EF(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    if (a_in_ap(s->ap, target_ap)) {
+        printf(" -> TEMOIN en q%d\n", current_id);
+        return 1;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_EF(next_id, target_ap, filename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int check_EG(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    if (!a_in_ap(s->ap, target_ap)) {
+        return 0;
+    }
+
+    if (s->leaf) {
+        return 1;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_EG(next_id, target_ap, filename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int check_nested_EF_EF(int current_id, char p, char q, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    if (a_in_ap(s->ap, p)) {
+        if (check_EF(current_id, q, filename) == 1) {
+            printf(" -> TEMOIN IMBRIQUE : q%d a '%c' et mene a '%c'\n", current_id, p, q);
+            return 1;
+        }
+    }
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_nested_EF_EF(next_id, p, q, filename)) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
