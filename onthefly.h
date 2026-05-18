@@ -42,4 +42,7 @@ int check_EF(int current_id, char target_ap, const char* filename);
 int check_EX(int current_id, char target_ap, const char* filename);
 int check_EG(int current_id, char target_ap, const char* filename);
 int check_nested_EF_EF(int current_id, char p, char q, const char* filename);
+int check_EF_leaf(int current_id, char target_ap, const char* filename);
+int check_AF_leaf(int current_id, char target_ap, const char* filename);
+int check_EG_AF(int current_id, char target_ap, const char* filename);
 #endif
