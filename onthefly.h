@@ -29,7 +29,7 @@ typedef struct ctl_props{
 
 int a_in_ap(char *l, char a);
 CTL *encode_props(char * props, int len);
-char check(State *q,CTL *ctl);
+char check_EF(State *q,CTL *ctl);
 char model_checking(DAG *g, char *props, int len_props);
 void free_State(DAG *dag);
 void free_DAG(DAG *dag);

@@ -72,6 +72,7 @@ int main(int argc, char **argv){
 	d->ap[0]='p';
 	d->ap[1]='q';
 	//model_checking();
+	encode_props("AG(p)",6);
 	free_DAG(d);
 	return 0;
 }

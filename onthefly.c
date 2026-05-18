@@ -12,7 +12,7 @@ int a_in_ap(char *l, char a){
 	return 0;
 }
 
-CTL *encode_prop(char *props, int len){ //pas d'imbrications pour le moment
+CTL *encode_props(char *props, int len){ //pas d'imbrications pour le moment
 	CTL *ctl=malloc(sizeof(CTL)),*curr_ctl=ctl;
 	int i=0;
 	while(i<len){//EF:4,EG=5,EX=6,&:7,|:8,T=9,F=10,AP=11
@@ -45,10 +45,10 @@ CTL *encode_prop(char *props, int len){ //pas d'imbrications pour le moment
 			if(props[i]=='('){
 				closed_brackets++;
 			}
-			if(props[i]==')'){
+			else if(props[i]==')'){
 				closed_brackets--;
 			}
-			if(closed_brackets==1){
+			else if(closed_brackets==1){
 				if(props[i]=='&'){
 					curr_ctl->op_p=7;
 				}
@@ -59,9 +59,10 @@ CTL *encode_prop(char *props, int len){ //pas d'imbrications pour le moment
 					curr_ctl->op_p=12;
 				}*/
 			}
-			if()  // EF(p & EF(p &...))
+			//if()  // EF(p & EF(p &...))
 		}
 	}
+	
 	/*
 	if(len)
 	else if(props[0]=='A'){
@@ -99,6 +100,7 @@ CTL *encode_prop(char *props, int len){ //pas d'imbrications pour le moment
 		}
 	}
 	*/
+	return ctl;
 }
 
 char check_EF(State *q,  CTL *ctl){
@@ -150,8 +152,8 @@ char check_EF(State *q,  CTL *ctl){
 
 
 char model_checking(DAG *g, char * props, int len_props){
-	CTL *ctl=encode_prop(props,len_props);
-	check(g->q_0,props);
+	CTL *ctl=encode_props(props,len_props);
+	check_EF(g->q_0,ctl);
 	//for(int i=0;i<g->)
 	return 0;
 }
@@ -172,6 +174,3 @@ void free_DAG(DAG *dag){
 	return;
 }
 
-char ag_eg(){
-	
-}
