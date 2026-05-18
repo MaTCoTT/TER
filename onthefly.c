@@ -151,14 +151,12 @@ State* charger_etat(int target_id, const char* filename) {
         int state_id;
         char ap_buf[64] = {0};
 
-        // Détection de "state qX (AP)" ou "state qX (empty)"
         if (sscanf(line, "state q%d (%63[^)])", &state_id, ap_buf) >= 1) {
             if (state_id == target_id) {
                 reading = 1;
                 current = calloc(1, sizeof(State));
                 current->n = target_id;
 
-                // Lire l'AP depuis la ligne state
                 if (strcmp(ap_buf, "empty") != 0 && strlen(ap_buf) > 0) {
                     int ap_idx = 0;
                     for (int i = 0; ap_buf[i] != '\0' && ap_idx < AP_SIZE; i++) {
@@ -176,7 +174,6 @@ State* charger_etat(int target_id, const char* filename) {
             }
         }
 
-        // Transitions simples : "transition qX -> qY"
         if (reading && strncmp(line, "transition", 10) == 0) {
             int src, dest;
 
@@ -290,7 +287,7 @@ int check_EF_p_ET_feuille(int current_id, char target_ap, const char* filename) 
  
     for (int i = 0; i < s->len_out; i++) {
         int next_id = s->out[i]->n;
-        if (check_EF_leaf(next_id, target_ap, filename)) {
+        if (check_EF_p_ET_feuille(next_id, target_ap, filename)) {
             return 1;
         }
     }
@@ -307,14 +304,33 @@ int check_AF_p_ET_feuille(int current_id, char target_ap, const char* filename) 
  
     for (int i = 0; i < s->len_out; i++) {
         int next_id = s->out[i]->n;
-        if (check_AF_leaf(next_id, target_ap, filename) == 0) {
+        if (check_AF_p_ET_feuille(next_id, target_ap, filename) == 0) {
             return 0;
         }
     }
     return 1;
 }
 
-int check_AF_at_state(int state_id, char target_ap, const char* filename);
+int check_AF_at_state(int state_id, char target_ap, const char* filename) {
+    State* s = charger_etat(state_id, filename);
+    if (s == NULL) return 0;
+
+    if (a_in_ap(s->ap, target_ap)) {
+        return 1;
+    }
+
+    if (s->leaf) {
+        return 0;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_AF_at_state(next_id, target_ap, filename) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
  
 int check_EG_AF(int current_id, char target_ap, const char* filename) {
     State* s = charger_etat(current_id, filename);
@@ -335,24 +351,4 @@ int check_EG_AF(int current_id, char target_ap, const char* filename) {
         }
     }
     return 0;
-}
-int check_AF_at_state(int state_id, char target_ap, const char* filename) {
-    State* s = charger_etat(state_id, filename);
-    if (s == NULL) return 0;
-
-    if (a_in_ap(s->ap, target_ap)) {
-        return 1;
-    }
-
-    if (s->leaf) {
-        return 0;
-    }
-
-    for (int i = 0; i < s->len_out; i++) {
-        int next_id = s->out[i]->n;
-        if (check_AF_at_state(next_id, target_ap, filename) == 0) {
-            return 0;
-        }
-    }
-    return 1;
 }
