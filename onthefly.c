@@ -278,3 +278,81 @@ int check_nested_EF_EF(int current_id, char p, char q, const char* filename) {
     
     return 0;
 }
+
+int check_EF_p_ET_feuille(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+ 
+    if (s->leaf && a_in_ap(s->ap, target_ap)) {
+        printf(" -> FEUILLE TEMOIN en q%d\n", current_id);
+        return 1;
+    }
+ 
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_EF_leaf(next_id, target_ap, filename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int check_AF_p_ET_feuille(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+ 
+    if (s->leaf) {
+        return a_in_ap(s->ap, target_ap);
+    }
+ 
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_AF_leaf(next_id, target_ap, filename) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int check_AF_at_state(int state_id, char target_ap, const char* filename);
+ 
+int check_EG_AF(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    if (check_AF_at_state(current_id, target_ap, filename) == 0) {
+        return 0;
+    }
+
+    if (s->leaf) {
+        return 1;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_EG_AF(next_id, target_ap, filename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+int check_AF_at_state(int state_id, char target_ap, const char* filename) {
+    State* s = charger_etat(state_id, filename);
+    if (s == NULL) return 0;
+
+    if (a_in_ap(s->ap, target_ap)) {
+        return 1;
+    }
+
+    if (s->leaf) {
+        return 0;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_AF_at_state(next_id, target_ap, filename) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
