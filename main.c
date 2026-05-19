@@ -99,9 +99,9 @@ int main() {
 
     printf("===== EQUIVALENCE QUI FONCTIONNE =====\n\n");
  
-    printf("=== EG(p) sur graphe 3 ===\n");
+    printf("=== EF(EG(p)) sur graphe 3 ===\n");
     reset_cache();
-    r = check_EG(0, 'p', g3);
+    r = check_EF_EG(0, 'p', g3);
     printf("Resultat : %s\n\n", r ? "VRAI" : "FAUX");
  
     printf("=== EF(p AND feuille) sur graphe 3 ===\n");
@@ -112,7 +112,7 @@ int main() {
 
 
 
-    printf("=== EG(p) sur graphe 3_2 ===\n");
+    printf("=== EF(EG(p)) sur graphe 3_2 ===\n");
     reset_cache();
     r = check_EG(0, 'p', g3_2);
     printf("Resultat : %s\n\n", r ? "VRAI" : "FAUX");

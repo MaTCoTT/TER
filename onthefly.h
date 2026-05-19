@@ -45,4 +45,5 @@ int check_nested_EF_EF(int current_id, char p, char q, const char* filename);
 int check_EF_p_ET_feuille(int current_id, char target_ap, const char* filename);
 int check_AF_p_ET_feuille(int current_id, char target_ap, const char* filename);
 int check_EG_AF(int current_id, char target_ap, const char* filename);
+int check_EF_EG(int current_id, char target_ap, const char* filename);
 #endif

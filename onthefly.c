@@ -352,3 +352,21 @@ int check_EG_AF(int current_id, char target_ap, const char* filename) {
     }
     return 0;
 }
+
+int check_EF_EG(int current_id, char target_ap, const char* filename) {
+    State* s = charger_etat(current_id, filename);
+    if (s == NULL) return 0;
+
+    if (check_EG(current_id, target_ap, filename)) {
+        printf(" -> TEMOIN EF(EG): EG(%c) vrai en q%d\n", target_ap, current_id);
+        return 1;
+    }
+
+    for (int i = 0; i < s->len_out; i++) {
+        int next_id = s->out[i]->n;
+        if (check_EF_EG(next_id, target_ap, filename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
