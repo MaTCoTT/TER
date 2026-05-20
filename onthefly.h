@@ -7,7 +7,10 @@ typedef struct graph_state{
 	int n,len_out,len_in;
 	char ap[AP_SIZE];
 	struct graph_state **out;
+	struct graph_state **in;
+	struct graph_state **siblings;
 	char af_cache[AP_SIZE];
+	char *op_SAT; //op satisfaite chez les out 
 	char leaf;
 } State;
 
@@ -19,17 +22,17 @@ typedef struct dag_graph{
 } DAG;
 
 typedef struct ctl_props{
-	char op; //EF:4,EG=5,EX=6,&:7,|:8,T=9,F=10,AP=11,U=12								AF:1,AG:2,AX:3,EF:4,EG:5,EX:6,&:7,|:8,T=9,F=10,AP:11
+	char op; //EF:4,EG=5,EX=6,&:7,|:8,AP=11,U=12								AF:1,AG:2,AX:3,EF:4,EG:5,EX:6,&:7,|:8,T=9,F=10,AP:11
 	struct ctl_props *p,*q; // AF(p & q)
-	char op_p,op_q; //operateurs des sous-formules p et q
-	char ap;
+	char op_p,op_q,op_parent; //operateurs des sous-formules p et q ainsi que celle du parent, 0 si aucun parent (premiere form) 
+	char ap; // T (true),F (false) et [a-z] valeur differentes
 	char negation;
 } CTL;
 
 int a_in_ap(char *l, char a);
-CTL *encode_props(char * props, int len);
+CTL *encode_props(char *props, int start, int len);
 char check(State *q,CTL *ctl);
-char model_checking(DAG *g, char *props, int len_props);
+char model_checking(int current_id, const char *filename, CTL *ctl);
 void free_State(DAG *dag);
 void free_DAG(DAG *dag);
 
