@@ -331,12 +331,42 @@ int check_AF_at_state(int state_id, char target_ap, const char* filename) {
     }
     return 1;
 }
+
+int check_AF_at_state_memo(int state_id, char target_ap, const char* filename) {
+    State* s = charger_etat(state_id, filename);
+    if (s == NULL) return 0;
+
+    int ap_idx = (target_ap == 'p') ? 0 : 1;
+    if (s->af_cache[ap_idx] != 0) {
+        return s->af_cache[ap_idx] == 1;
+    }
+
+    int result;
+
+    if (a_in_ap(s->ap, target_ap)) {
+        result = 1;
+    } else if (s->leaf) {
+        result = 0;
+    } else {
+        result = 1;
+        for (int i = 0; i < s->len_out; i++) {
+            int next_id = s->out[i]->n;
+            if (check_AF_at_state_memo(next_id, target_ap, filename) == 0) {
+                result = 0;
+                break;
+            }
+        }
+    }
+
+    s->af_cache[ap_idx] = result ? 1 : -1;
+    return result;
+}
  
 int check_EG_AF(int current_id, char target_ap, const char* filename) {
     State* s = charger_etat(current_id, filename);
     if (s == NULL) return 0;
 
-    if (check_AF_at_state(current_id, target_ap, filename) == 0) {
+    if (check_AF_at_state_memo(current_id, target_ap, filename) == 0) {
         return 0;
     }
 

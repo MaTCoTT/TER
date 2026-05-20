@@ -7,7 +7,7 @@ typedef struct graph_state{
 	int n,len_out,len_in;
 	char ap[AP_SIZE];
 	struct graph_state **out;
-	//struct graph_state **in;
+	char af_cache[AP_SIZE];
 	char leaf;
 } State;
 
